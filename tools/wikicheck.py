@@ -3,14 +3,15 @@
 
 Part of verified-llm-wiki. Standard library only, Python 3.9+.
 
-    python wikicheck.py lint     [--root DIR]
+    python wikicheck.py lint     [--root DIR] [--only PATH]
     python wikicheck.py cite     REPORT [--root DIR] [--slack N] [--terms T1,T2]
                                  [--files F1,F2] [--expect-model NAME]
     python wikicheck.py snapshot [--root DIR] [--paths raw] [--against FILE] [--out FILE]
     python wikicheck.py hash     FILE [FILE ...]
-    python wikicheck.py extract  TERM [TERM ...] [--root DIR]
+    python wikicheck.py extract  TERM [TERM ...] [--root DIR] [--in PATH]
 
-lint      Seven checks over the whole folder (L1 to L7, below).
+lint      Seven checks over the whole folder (L1 to L7, below). --only keeps the
+          candidates under one path (an area), but every check still runs on all of it.
 cite      Verifies every <<<CITE ... CITE>>> block of a report against the files,
           the READ ranges the report declares, and which mentions of the given
           terms no citation covers.
@@ -18,18 +19,20 @@ snapshot  Hashes the ground truth (default: raw/) and diffs it against the last
           snapshot in snapshots/. With --out, saves the new snapshot.
 hash      Prints a file's sha256, for the `sources:` frontmatter of a page.
 extract   Every mention of the terms in every .md file, with its paragraph, or with
-          its table row and the table header.
+          its table row and the table header. --in limits it to one folder.
 
 Lint checks:
-    L1 index       index.md and the folder list the same files; every entry has a type
+    L1 index       every folder with an index.md lists its own files, each with a type;
+                   a sub-folder with its own index.md is listed by the index above it
     L2 links       [[page]] and [[page#heading]] resolve
     L3 registry    IDs (D, H, T, P) are registered once, statuses are valid,
                    "executed" has evidence, no unknown or cancelled IDs in use,
-                   every page in registry/ has its row
+                   every page in registry/ has its row, only closed items in
+                   registry-archive.md, and every Area value is a folder in areas/
     L4 superseded  values in an "Old value" column don't appear anywhere else
     L5 provenance  sources hashed in a page's frontmatter haven't changed
-    L6 log         log.md times are clock times, in order, not in the future,
-                   and every line says what was checked
+    L6 log         log.md and log/YYYY-MM.md: clock times, in order, in their month,
+                   not in the future, and every line says what was checked
     L7 rules       every rule in the schema's Rules section has an Origin
 
 Everything it reports is a candidate, not a verdict: the agent reads each one
@@ -59,7 +62,10 @@ STATUSES = {
     "T": {"open", "answered"},
     "P": {"open", "closed"},
 }
+TERMINAL = {"executed", "cancelled", "superseded", "answered", "closed"}
+SHARED_AREAS = {"all", "shared"}
 SCHEMA_FILES = ("CLAUDE.md", "AGENTS.md")
+REGISTRY_FILES = ("registry.md", "registry-archive.md")
 EMPTY = {"", "-", "—", "–", "n/a"}
 ID_RE = re.compile(r"(?<![A-Za-z0-9_\-/.])([DHTP])(\d+)(?![A-Za-z0-9_])")
 LINK_RE = re.compile(r"\[\[([^\]\n]+?)\]\]")
@@ -195,18 +201,17 @@ def headings(text: str) -> set[str]:
 
 # ---------------------------------------------------------------- lint checks
 
-def check_index(root: Path, **_):
-    tag, out = "L1 index", []
-    idx = root / "index.md"
-    if not idx.is_file():
-        return [(tag, "index.md", "missing")]
-    entries: dict[str, int] = {}
+def index_entries(root: Path, folder: Path):
+    """Entries of folder/index.md, as paths relative to that folder."""
+    tag, out, entries = "L1 index", [], {}
+    idx = folder / "index.md"
+    name = rel(root, idx)
     for header, _, rows in tables(numbered(read(idx))):
         for n, cells in rows:
             m = re.fullmatch(r"`([^`]+)`", cells[0]) if cells else None
             if not m:
                 continue
-            path, loc = m.group(1), f"index.md:{n}"
+            path, loc = m.group(1), f"{name}:{n}"
             if path in entries:
                 out.append((tag, loc, f"`{path}` is listed twice (also line {entries[path]})"))
             entries[path] = n
@@ -215,16 +220,46 @@ def check_index(root: Path, **_):
                 out.append((tag, loc, f"`{path}`: type '{typ}' is not one of {', '.join(sorted(TYPES))}"))
             if len(cells) < 3 or cells[2].strip() in EMPTY:
                 out.append((tag, loc, f"`{path}`: doesn't say what it answers"))
-            target = root / path.rstrip("/")
+            target = folder / path.rstrip("/")
             if path.endswith("/") and not target.is_dir():
                 out.append((tag, loc, f"folder `{path}` is listed but doesn't exist"))
             elif not path.endswith("/") and not target.is_file():
                 out.append((tag, loc, f"`{path}` is listed but doesn't exist"))
-    folders = [p for p in entries if p.endswith("/")]
-    for p in walk_files(root):
-        r = rel(root, p)
-        if r not in entries and not any(r.startswith(d) for d in folders):
-            out.append((tag, r, "not in index.md"))
+    return entries, out
+
+
+def check_index(root: Path, **_):
+    """Every folder with an index.md covers its own files; a sub-folder with its own
+    index.md covers its files, and the index above lists that sub-folder."""
+    tag = "L1 index"
+    if not (root / "index.md").is_file():
+        return [(tag, "index.md", "missing")]
+    files = walk_files(root)
+    indexed = {p.parent for p in files if p.name == "index.md"}
+
+    def owner(d: Path) -> Path:  # nearest folder with an index, from d upward
+        while d != root and d not in indexed:
+            d = d.parent
+        return d
+
+    out = []
+    for folder in sorted(indexed, key=lambda d: (len(d.parts), str(d))):
+        entries, found = index_entries(root, folder)
+        out.extend(found)
+        dirs = [e for e in entries if e.endswith("/")]
+        covered = lambda r: r in entries or any(r.startswith(d) for d in dirs)
+        idx_name = rel(root, folder / "index.md")
+        for p in files:
+            if p.name == "index.md" and p.parent in indexed:
+                continue
+            if owner(p.parent) == folder and not covered(p.relative_to(folder).as_posix()):
+                out.append((tag, rel(root, p), f"not in {idx_name}"))
+        for sub in indexed:
+            if sub not in (folder, root) and owner(sub.parent) == folder:
+                r = sub.relative_to(folder).as_posix() + "/"
+                if not covered(r):
+                    out.append((tag, rel(root, sub / "index.md"),
+                                f"this folder has its own index but {idx_name} doesn't list `{r}`"))
     return out
 
 
@@ -267,35 +302,48 @@ def check_links(root: Path, **_):
 
 
 def registry_ids(root: Path):
-    """Return ({id: (status, lineno)}, findings)."""
+    """Return ({id: (status, location)}, findings), from registry.md and registry-archive.md."""
     tag, out, ids = "L3 registry", [], {}
-    reg = root / "registry.md"
-    if not reg.is_file():
+    if not (root / "registry.md").is_file():
         return ids, [(tag, "registry.md", "missing")]
-    for header, _, rows in tables(numbered(read(reg))):
-        h = [c.strip().lower() for c in header]
-        if "id" not in h or "status" not in h:
+    areas = root / "areas"
+    for name in REGISTRY_FILES:
+        reg = root / name
+        if not reg.is_file():
             continue
-        i_id, i_st = h.index("id"), h.index("status")
-        i_ev = h.index("evidence") if "evidence" in h else None
-        for n, cells in rows:
-            loc = f"registry.md:{n}"
-            raw = clean_cell(cells[i_id]) if i_id < len(cells) else ""
-            m = re.fullmatch(r"([DHTP])(\d+)", raw)
-            if not m:
-                out.append((tag, loc, f"'{raw}' is not an ID (D, H, T or P and a number)"))
+        archive = name != "registry.md"
+        for header, _, rows in tables(numbered(read(reg))):
+            h = [c.strip().lower() for c in header]
+            if "id" not in h or "status" not in h:
                 continue
-            if raw in ids:
-                out.append((tag, loc, f"{raw} is registered twice (also line {ids[raw][1]})"))
-            st = clean_cell(cells[i_st]).lower() if i_st < len(cells) else ""
-            if st not in STATUSES[m.group(1)]:
-                out.append((tag, loc, f"{raw}: status '{st}' is not one of "
-                            + ", ".join(sorted(STATUSES[m.group(1)]))))
-            if st == "executed":
-                ev = cells[i_ev].strip() if i_ev is not None and i_ev < len(cells) else ""
-                if ev in EMPTY:
-                    out.append((tag, loc, f"{raw} is 'executed' with no evidence"))
-            ids[raw] = (st, n)
+            i_id, i_st = h.index("id"), h.index("status")
+            i_ev = h.index("evidence") if "evidence" in h else None
+            i_area = h.index("area") if "area" in h else None
+            for n, cells in rows:
+                loc = f"{name}:{n}"
+                raw = clean_cell(cells[i_id]) if i_id < len(cells) else ""
+                m = re.fullmatch(r"([DHTP])(\d+)", raw)
+                if not m:
+                    out.append((tag, loc, f"'{raw}' is not an ID (D, H, T or P and a number)"))
+                    continue
+                if raw in ids:
+                    out.append((tag, loc, f"{raw} is registered twice (also {ids[raw][1]})"))
+                st = clean_cell(cells[i_st]).lower() if i_st < len(cells) else ""
+                if st not in STATUSES[m.group(1)]:
+                    out.append((tag, loc, f"{raw}: status '{st}' is not one of "
+                                + ", ".join(sorted(STATUSES[m.group(1)]))))
+                elif archive and st not in TERMINAL:
+                    out.append((tag, loc, f"{raw} is '{st}': only closed items go to the archive"))
+                if st == "executed":
+                    ev = cells[i_ev].strip() if i_ev is not None and i_ev < len(cells) else ""
+                    if ev in EMPTY:
+                        out.append((tag, loc, f"{raw} is 'executed' with no evidence"))
+                if i_area is not None and areas.is_dir() and i_area < len(cells):
+                    area = clean_cell(cells[i_area])
+                    if (area not in EMPTY and area.lower() not in SHARED_AREAS
+                            and not (areas / area).is_dir()):
+                        out.append((tag, loc, f"{raw}: area '{area}' is not a folder in areas/"))
+                ids[raw] = (st, loc)
     return ids, out
 
 
@@ -316,7 +364,7 @@ def check_registry(root: Path, **_):
                 code = m.group(0)
                 if code not in ids:
                     out.append((tag, f"{r}:{n}", f"{code} is used but not registered"))
-                elif (ids[code][0] == "cancelled" and r != "registry.md"
+                elif (ids[code][0] == "cancelled" and r not in REGISTRY_FILES
                       and "cancel" not in line.lower()):
                     out.append((tag, f"{r}:{n}", f"{code} is cancelled but used as if it were current"))
     return out
@@ -347,7 +395,7 @@ def check_superseded(root: Path, **_):
                 olds.append((val, pat, f"{rel(root, p)}:{n}"))
     for p in files:
         r = rel(root, p)
-        if r == "log.md":
+        if r == "log.md" or r.startswith("log/"):
             continue
         for n, line in cache[p]:
             if (p, n) in skip or "(old)" in line.lower():
@@ -390,30 +438,44 @@ def check_provenance(root: Path, **_):
     return out
 
 
+def log_files(root: Path) -> list[Path]:
+    """Rotated logs first (log/YYYY-MM.md, oldest to newest), then log.md if present."""
+    d = root / "log"
+    rotated = sorted(d.glob("*.md")) if d.is_dir() else []
+    return rotated + ([root / "log.md"] if (root / "log.md").is_file() else [])
+
+
 def check_log(root: Path, now: dt.datetime | None = None, **_):
     tag, out = "L6 log", []
-    log = root / "log.md"
-    if not log.is_file():
-        return [(tag, "log.md", "missing")]
+    files = log_files(root)
+    if not files:
+        return [(tag, "log.md", "missing (log.md, or monthly files in log/)")]
     now = now or dt.datetime.now()
     prev = None
-    for header, _, rows in tables(numbered(read(log))):
-        if not header or header[0].strip().lower() != "when":
-            continue
-        for n, cells in rows:
-            loc = f"log.md:{n}"
-            try:
-                t = dt.datetime.strptime(cells[0].strip(), "%Y-%m-%d %H:%M")
-            except ValueError:
-                out.append((tag, loc, f"'{cells[0]}' is not a clock time (YYYY-MM-DD HH:MM)"))
+    for log in files:
+        name = rel(root, log)
+        month = log.stem if log.parent.name == "log" and re.fullmatch(r"\d{4}-\d{2}", log.stem) else None
+        if log.parent.name == "log" and month is None:
+            out.append((tag, name, "a rotated log is named after its month: log/YYYY-MM.md"))
+        for header, _, rows in tables(numbered(read(log))):
+            if not header or header[0].strip().lower() != "when":
                 continue
-            if prev and t < prev:
-                out.append((tag, loc, "earlier than a line above it: estimated time, or written out of order"))
-            if t > now + FUTURE_TOLERANCE:
-                out.append((tag, loc, "in the future: the time was estimated, not read from the clock"))
-            if len(cells) < 5 or cells[4].strip() in EMPTY:
-                out.append((tag, loc, "doesn't say what was checked"))
-            prev = max(prev, t) if prev else t
+            for n, cells in rows:
+                loc = f"{name}:{n}"
+                try:
+                    t = dt.datetime.strptime(cells[0].strip(), "%Y-%m-%d %H:%M")
+                except ValueError:
+                    out.append((tag, loc, f"'{cells[0]}' is not a clock time (YYYY-MM-DD HH:MM)"))
+                    continue
+                if month and t.strftime("%Y-%m") != month:
+                    out.append((tag, loc, f"{t:%Y-%m} entry in the log of {month}"))
+                if prev and t < prev:
+                    out.append((tag, loc, "earlier than a line above it: estimated time, or written out of order"))
+                if t > now + FUTURE_TOLERANCE:
+                    out.append((tag, loc, "in the future: the time was estimated, not read from the clock"))
+                if len(cells) < 5 or cells[4].strip() in EMPTY:
+                    out.append((tag, loc, "doesn't say what was checked"))
+                prev = max(prev, t) if prev else t
     return out
 
 
@@ -452,10 +514,15 @@ CHECKS = [check_index, check_links, check_registry, check_superseded,
           check_provenance, check_log, check_rules]
 
 
-def lint(root: Path, now: dt.datetime | None = None):
+def lint(root: Path, now: dt.datetime | None = None, only: str = ""):
+    """All checks run over the whole folder; `only` keeps the candidates located under a path."""
     out = []
     for check in CHECKS:
         out.extend(check(root, now=now))
+    if only:
+        prefix = only.strip("/")
+        out = [f for f in out if f[1] == prefix or f[1].startswith(prefix + "/")
+               or f[1].startswith(prefix + ":")]
     return out
 
 
@@ -656,10 +723,11 @@ def blocks(lines: list[str]):
         yield para[0][0], para[-1][0], section, None, "\n".join(t for _, t in para)
 
 
-def extract(root: Path, terms: list[str]):
+def extract(root: Path, terms: list[str], within: str = ""):
     lowered = [t.lower() for t in terms]
     hits = []
-    for p in md_files(root):
+    base = root / within if within else root
+    for p in md_files(base):
         for a, b, section, header, text in blocks(read(p).splitlines()):
             if any(t in text.lower() for t in lowered):
                 hits.append((rel(root, p), a, b, section, header, text))
@@ -674,6 +742,7 @@ def main(argv=None) -> int:
 
     p = sub.add_parser("lint", help="run the seven checks")
     p.add_argument("--root", default=".")
+    p.add_argument("--only", default="", help="show only candidates under this path (e.g. areas/sales)")
 
     p = sub.add_parser("cite", help="verify the citations of a report")
     p.add_argument("report")
@@ -695,6 +764,7 @@ def main(argv=None) -> int:
     p = sub.add_parser("extract", help="every mention of the terms, with its paragraph or table row")
     p.add_argument("terms", nargs="+")
     p.add_argument("--root", default=".")
+    p.add_argument("--in", dest="within", default="", help="only this folder (e.g. areas/sales)")
 
     a = ap.parse_args(argv)
 
@@ -710,7 +780,7 @@ def main(argv=None) -> int:
         return 2
 
     if a.cmd == "lint":
-        found = lint(root)
+        found = lint(root, only=a.only)
         for tag, loc, msg in found:
             print(f"[{tag}] {loc}: {msg}")
         print(f"\n{len(CHECKS)} checks · {len(found)} candidate(s)" if found
@@ -759,7 +829,7 @@ def main(argv=None) -> int:
         return 0
 
     if a.cmd == "extract":
-        hits = extract(root, a.terms)
+        hits = extract(root, a.terms, a.within)
         for path, s, e, section, header, text in hits:
             loc = f"{path}:{s}" if s == e else f"{path}:{s}-{e}"
             print(f"== {loc}" + (f" · {section}" if section else ""))

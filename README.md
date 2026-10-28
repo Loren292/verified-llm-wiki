@@ -74,7 +74,7 @@ Karpathy's three layers stay, and a fourth is added.
   or a model that keeps changing. The wiki records *which version* each claim was checked against.
 - **The wiki,** split into *state* (what's true now, what's open) and *pages* (topics, entities,
   concepts). One fact lives in one place. **Many small files:** no state file grows without limit
-  (see 4).
+  (see 4 and 11).
 - **The schema: method only, never state.** No numbers, decisions or dates go in it, because those
   go stale. A schema that holds only method doesn't expire.
 - **The verification layer** (new): a read-only checker, snapshots of the ground truth, a signature
@@ -93,12 +93,12 @@ before reporting it.
 
 | Check | Catches |
 |---|---|
-| L1 Index | Files nobody listed, entries pointing to deleted files, entries without a type |
+| L1 Index | Files nobody listed, entries pointing to deleted files, entries without a type, in the root index and in every area's index |
 | L2 Links | `[[page]]` and `[[page#heading]]` that point nowhere |
-| L3 Registry | IDs used but never registered, duplicates, "executed" without evidence, cancelled decisions still in use |
+| L3 Registry | IDs used but never registered, duplicates, "executed" without evidence, cancelled decisions still in use, open items in the archive, unknown areas |
 | L4 Superseded values | An old value that a correction already replaced, still sitting in some page |
 | L5 Provenance | Pages derived from a source that changed after they were written |
-| L6 Log | Signatures out of order or in the future (estimated, not read from a clock), or that don't say what was checked |
+| L6 Log | Signatures out of order, in the future (estimated, not read from a clock), in the wrong month's file, or that don't say what was checked |
 | L7 Rules | Rules in the schema without the error that caused them |
 
 ### 2. Decided ≠ executed
@@ -286,6 +286,45 @@ lifecycle:
 - a *reference* is read but not maintained;
 - a *source* is never edited.
 
+### 11. When the project grows
+
+This is what the first question about this pattern usually is: for a big project, one wiki or
+several? **One wiki, split into areas,** almost always. Splitting into separate wikis loses
+exactly what makes the pattern worth it: when a source touches two areas, both get updated, and
+contradictions between them get flagged. Separate wikis only make sense when the areas have nothing
+to tell each other, have different readers (one private, one shared), or need schemas that don't
+fit together.
+
+**When to split:** a state file the agent can't read in full in one go, a session start that spends
+more on reading than on working, an index that no longer fits on a screen or two. The split is
+itself a decision, carried out with a one-shot workflow, with the lint at 0 before and after.
+
+| What grows | How it's split |
+|---|---|
+| The wiki | One folder per area, `areas/<area>/`, with its own `index.md` and `pending.md`. The root index lists `areas/` and nothing inside it. Whatever several areas use goes in `shared/`, one page per thing |
+| The schema | Stays one. An area that works differently gets a conventions file with only what differs |
+| The registry | Stays one, with global numbering so IDs never collide, and an `Area` column. Closed rows move to `registry-archive.md`, so `registry.md` keeps only what's open |
+| The log | Rotates by month: `log/YYYY-MM.md`. Before writing, read only the tail of the current month |
+| Pending | One per area. The root keeps only what blocks across areas |
+| Links | A page name used in two areas is linked by path: `[[areas/sales/overview]]` |
+
+- **Reading at the start of a session:** the root index, the area's index and pending, the
+  registry rows of that area, and only the pages the work touches.
+- **Search.** Karpathy notes that the index is enough up to a few hundred pages, and suggests a
+  search engine (qmd) beyond that. Use it to *find*. To *verify coverage* (every mention of a
+  term, code or value) keep using `wikicheck extract --in <area>`: a ranked search doesn't promise
+  it brought everything.
+- **Checks** always run over the whole folder, because links and values cross areas.
+  `wikicheck lint --only areas/<area>` shows one area's candidates while working there.
+- **Review:** one reviewer per area in parallel, plus one that only checks what crosses areas
+  (the same number said differently, links between areas, a term used two ways).
+- **A wiki that cites another** declares it like any source, with its hash, so the lint notices
+  when the other one changes.
+
+`wikicheck` supports all of this: sub-indexes per folder, rotated logs, the registry archive and
+the `Area` column are checked, and `tests/` builds a grown wiki and plants errors in it. The full
+procedure is in `template/CLAUDE.md`, section 12.
+
 ## The cycle of a work item
 
 Karpathy's ingest, query and lint become one cycle, used for any unit of work: a source to
@@ -326,16 +365,18 @@ template/          a starting folder: copy it to begin
   wiki/ raw/ snapshots/ reviews/
 tools/wikicheck.py the read-only checker (standard library only, Python 3.9+)
 example/           a tiny wiki (an online store's order metrics) that passes every check
-tests/             each check tested against planted errors
+tests/             each check tested against planted errors, also on a grown wiki with areas
 ```
 
 ```
 python tools/wikicheck.py lint     --root my-wiki
+python tools/wikicheck.py lint     --root my-wiki --only areas/sales   # one area's candidates
 python tools/wikicheck.py snapshot --root my-wiki                  # diff raw/ against the last snapshot
 python tools/wikicheck.py snapshot --root my-wiki --out "snapshots/2026-10-28 1415.json"
 python tools/wikicheck.py cite report.md --root my-wiki --files wiki/metrics.md --terms shipping
 python tools/wikicheck.py hash     my-wiki/raw/orders.csv          # for a page's sources: frontmatter
 python tools/wikicheck.py extract  refund --root my-wiki           # every mention, with its paragraph or table row
+python tools/wikicheck.py extract  refund --root my-wiki --in areas/sales
 ```
 
 **Quick start:**

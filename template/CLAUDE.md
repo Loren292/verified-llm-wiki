@@ -263,6 +263,7 @@ Never paste the raw report.
 Run `wikicheck lint` and `wikicheck snapshot` (it diffs the ground truth against the last
 snapshot), read the files of section 3, and tell me what you found that differs from what I
 expected, including which lint candidates turned out to be real. Then I tell you the work item.
+In a project split into areas, what to read is in section 12.
 
 ## 10 · How you deliver
 
@@ -276,9 +277,50 @@ expected, including which lint candidates turned out to be real. Then I tell you
 
 | File | Format |
 |---|---|
-| `index.md` | Table rows with three cells: the path in backticks, its type, and what it answers. A path ending in `/` covers a whole folder. Types: state, page, method, block, reference, source, log |
-| `registry.md` | Tables with `ID`, `Status`, `Evidence` and `Page` columns. An "executed" row needs evidence. Superseded values go in a table with `Old value` and `New value` columns; to mention an old value on purpose elsewhere, mark the line `(old)` |
+| `index.md` | Table rows with three cells: the path in backticks, its type, and what it answers. A path ending in `/` covers a whole folder. Types: state, page, method, block, reference, source, log. Any folder may have its own `index.md` listing its own files, with paths relative to it; the index above lists that folder |
+| `registry.md` | Tables with `ID`, `Status`, `Evidence` and `Page` columns, and an optional `Area` column (an area folder name, `all` or `shared`). An "executed" row needs evidence. Closed rows can move to `registry-archive.md`, same format, closed statuses only. Superseded values go in a table with `Old value` and `New value` columns; to mention an old value on purpose elsewhere, mark the line `(old)` |
 | `registry/` | One page per ID, named after it (`registry/<ID>.md`), linked from its row as `[[<ID>]]`. Every page needs its row. The status is not repeated in the page |
-| `log.md` | A table whose first column is `When` (`YYYY-MM-DD HH:MM`, read from the clock) and whose fifth says what was checked |
+| `log.md` | A table whose first column is `When` (`YYYY-MM-DD HH:MM`, read from the clock) and whose fifth says what was checked. Once rotated, one file per month in `log/` (`log/YYYY-MM.md`), each with only its month |
 | Pages | Links as `[[page]]` or `[[page#Heading]]` (in a table, escape the alias bar: `[[page#Heading\|text]]`). A page derived from a source declares it in frontmatter: `sources:` then `- raw/file.csv sha256:<first 12 hex>` (`wikicheck hash` prints it) |
 | This file | Every item of the Rules section carries `Origin:` |
+
+## 12 · When the project grows
+
+**Signals.** Any of these means it's time to split:
+- a state file you can no longer read in full in one go, or a session start that spends more on
+  reading than on working;
+- an index that no longer fits on a screen or two;
+- groups of pages that rarely link to each other.
+
+**How.** The split is a decision (a D, with its why), carried out with a one-shot workflow, with
+`wikicheck lint` at 0 before and after, and a snapshot.
+
+| What grows | How it's split |
+|---|---|
+| The wiki | One folder per area, `areas/<area>/`, with its own `index.md` (paths relative to the area) and `pending.md`. The root `index.md` lists `areas/` and nothing inside it. Whatever more than one area uses goes in `shared/`, one page per thing, so there are never two versions of it |
+| The schema | Stays one. An area that works differently gets `areas/<area>/CONVENTIONS.md`: method only, and only what differs from this file |
+| The registry | Stays one, with global numbering (no per-area prefixes, so IDs never collide) and an `Area` column: the area's folder name, or `all` / `shared` for what crosses areas. Closed rows (executed, cancelled, superseded, answered, closed) move to `registry-archive.md`; `registry.md` keeps what's still open |
+| The log | Rotates by month: `log/YYYY-MM.md`. Before writing, read only the tail of the current month |
+| Pending | One per area. The root `pending.md` keeps only what blocks across areas |
+| Links | A page name used in two areas is ambiguous: link it by path, `[[areas/sales/overview]]` |
+
+**What to read at the start of a session:** the root index; the index and pending of the area of
+the work item; the registry rows of that area and of `all` and `shared`; and only the pages the
+work touches.
+
+**Search.** The indexes are enough up to a few hundred pages. Beyond that, add a search engine
+(Karpathy suggests qmd) to *find* pages. To *verify coverage* (every mention of a term, a code or
+a value) keep using `wikicheck extract`, with `--in` for one area: a ranked search doesn't promise
+it brought everything.
+
+**Checks.** `wikicheck lint` always runs over the whole folder, because links and values cross
+areas. `--only areas/<area>` shows only that area's candidates while you work there. Before
+closing anything that touches more than one area, look at all of them.
+
+**Review.** One reviewer per area, in parallel, and one more that only checks what crosses areas:
+the same number said differently, links between areas, the same term used two ways.
+
+**Separate wikis** only when the areas have nothing to tell each other, when they have different
+readers (one private, one shared), or when they need schemas that don't fit together. A wiki that
+cites another declares it like any source, in `sources:` with its path and hash, so the lint
+notices when the other one changes.

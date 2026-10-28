@@ -76,7 +76,7 @@ Las tres capas de Karpathy se mantienen y se agrega una cuarta.
   cada afirmación.
 - **La wiki,** separada en *estado* (qué es cierto ahora, qué está abierto) y *páginas* (temas,
   entidades, conceptos). Cada dato vive en un solo lugar. **Muchos archivos chicos:** ningún
-  archivo de estado crece sin límite (ver 4).
+  archivo de estado crece sin límite (ver 4 y 11).
 - **El schema: solo método, nunca estado.** Ni números, ni decisiones, ni fechas, porque eso
   caduca. Un schema que solo tiene método no vence.
 - **La capa de verificación** (nueva): un verificador de solo lectura, fotos del dato real, un
@@ -95,12 +95,12 @@ veredictos**: el agente lee cada uno antes de reportarlo.
 
 | Control | Qué detecta |
 |---|---|
-| L1 Índice | Archivos que nadie anotó, entradas que apuntan a archivos borrados, entradas sin tipo |
+| L1 Índice | Archivos que nadie anotó, entradas que apuntan a archivos borrados, entradas sin tipo, en el índice raíz y en el de cada área |
 | L2 Links | `[[página]]` y `[[página#título]]` que no apuntan a nada |
-| L3 Registro | IDs usados y nunca registrados, duplicados, "ejecutado" sin evidencia, decisiones anuladas que se siguen usando |
+| L3 Registro | IDs usados y nunca registrados, duplicados, "ejecutado" sin evidencia, decisiones anuladas que se siguen usando, ítems abiertos en el archivo, áreas que no existen |
 | L4 Valores reemplazados | Un valor viejo que una corrección ya reemplazó y sigue en alguna página |
 | L5 Procedencia | Páginas que salieron de una fuente que cambió después de escribirlas |
-| L6 Log | Firmas fuera de orden o en el futuro (estimadas, no leídas del reloj), o que no dicen qué se controló |
+| L6 Log | Firmas fuera de orden, en el futuro (estimadas, no leídas del reloj), en el archivo de otro mes, o que no dicen qué se controló |
 | L7 Reglas | Reglas del schema sin el error que las originó |
 
 ### 2. Decidido ≠ ejecutado
@@ -290,6 +290,47 @@ Los tipos tienen ciclo de vida:
 - una *referencia* se lee pero no se mantiene;
 - una *fuente* nunca se edita.
 
+### 11. Cuando el proyecto crece
+
+Esta suele ser la primera pregunta sobre el patrón: para un proyecto grande, ¿una wiki o varias?
+**Una sola wiki, dividida en áreas,** casi siempre. Partirla en wikis separadas pierde justo lo que
+hace valer la pena el patrón: cuando una fuente toca dos áreas se actualizan las dos, y se marcan
+las contradicciones entre ellas. Las wikis separadas solo tienen sentido cuando las áreas no tienen
+nada que decirse, tienen lectores distintos (una privada, otra compartida) o necesitan schemas que
+no encajan entre sí.
+
+**Cuándo dividir:** un archivo de estado que el agente ya no puede leer entero de una vez, un
+arranque de sesión que gasta más en leer que en trabajar, un índice que ya no entra en una o dos
+pantallas. La división es en sí una decisión, y se hace con un workflow de un solo uso, con el lint
+en 0 antes y después.
+
+| Qué crece | Cómo se divide |
+|---|---|
+| La wiki | Una carpeta por área, `areas/<área>/`, con su propio `index.md` y su `pending.md`. El índice raíz lista `areas/` y nada de adentro. Lo que usan varias áreas va en `shared/`, una página por cosa |
+| El schema | Sigue siendo uno. Un área que trabaja distinto tiene un archivo de convenciones solo con lo que cambia |
+| El registro | Sigue siendo uno, con numeración global para que los IDs no choquen, y una columna `Area`. Las filas cerradas pasan a `registry-archive.md`, así `registry.md` queda solo con lo abierto |
+| El log | Rota por mes: `log/AAAA-MM.md`. Antes de escribir se lee solo la cola del mes en curso |
+| Los pendientes | Uno por área. El de la raíz queda solo para lo que bloquea entre áreas |
+| Los links | Un nombre de página que existe en dos áreas se enlaza por ruta: `[[areas/sales/overview]]` |
+
+- **Qué se lee al arrancar una sesión:** el índice raíz, el índice y los pendientes del área, las
+  filas del registro de esa área y solo las páginas que toca el trabajo.
+- **Búsqueda.** Karpathy dice que el índice alcanza hasta unos cientos de páginas y sugiere un
+  buscador (qmd) para más. Sirve para *encontrar*. Para *verificar cobertura* (todas las menciones
+  de un término, un código o un valor) sigue haciendo falta `wikicheck extract --in <área>`: una
+  búsqueda por relevancia no garantiza haber traído todo.
+- **Los controles** corren siempre sobre la carpeta entera, porque los links y los valores cruzan
+  áreas. `wikicheck lint --only areas/<área>` muestra solo los candidatos de un área mientras se
+  trabaja en ella.
+- **Revisión:** un revisor por área en paralelo, más uno que solo mira lo que cruza áreas (la misma
+  cifra dicha distinto, links entre áreas, un término usado de dos maneras).
+- **Una wiki que cita a otra** la declara como cualquier fuente, con su hash, así el lint avisa
+  cuando la otra cambia.
+
+`wikicheck` soporta todo esto: controla los sub-índices por carpeta, los logs rotados, el archivo
+del registro y la columna `Area`, y `tests/` arma una wiki crecida y le siembra errores. El
+procedimiento completo está en `template/CLAUDE.md`, sección 12.
+
 ## El ciclo de un punto de trabajo
 
 El ingest, la consulta y el lint de Karpathy pasan a ser un solo ciclo, que sirve para cualquier
@@ -333,16 +374,18 @@ template/          una carpeta para arrancar: copiala para empezar
   wiki/ raw/ snapshots/ reviews/
 tools/wikicheck.py el verificador de solo lectura (solo biblioteca estándar, Python 3.9+)
 example/           una wiki mínima (métricas de pedidos de una tienda online) que pasa todos los controles
-tests/             cada control probado contra errores sembrados
+tests/             cada control probado contra errores sembrados, también en una wiki crecida con áreas
 ```
 
 ```
 python tools/wikicheck.py lint     --root mi-wiki
+python tools/wikicheck.py lint     --root mi-wiki --only areas/sales   # los candidatos de un área
 python tools/wikicheck.py snapshot --root mi-wiki                  # compara raw/ con la última foto
 python tools/wikicheck.py snapshot --root mi-wiki --out "snapshots/2026-10-28 1415.json"
 python tools/wikicheck.py cite informe.md --root mi-wiki --files wiki/metrics.md --terms shipping
 python tools/wikicheck.py hash     mi-wiki/raw/orders.csv          # para el frontmatter sources: de una página
 python tools/wikicheck.py extract  refund --root mi-wiki           # cada mención, con su párrafo o su fila de tabla
+python tools/wikicheck.py extract  refund --root mi-wiki --in areas/sales
 ```
 
 **Para arrancar:**
