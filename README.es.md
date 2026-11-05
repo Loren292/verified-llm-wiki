@@ -351,11 +351,27 @@ unidad de trabajo: una fuente para ingerir, una pregunta, una página, una decis
 8. **Cerrar:** qué quedó resuelto, qué quedó abierto, de quién depende, y la pregunta de la
    repetición (8).
 
+**Caminos cortos.** El ciclo se justifica cuando algo depende del resultado. Dos tipos de trabajo lo
+saltean, y ante la duda va el ciclo completo:
+
+- **Trabajo liviano.** Nada depende de él: ninguna decisión, no cambia un valor ni un estado, y
+  equivocarse casi no cuesta. Lee solo lo que necesita. Una pregunta no escribe nada; un arreglo chico
+  escribe el archivo y su línea del log. La respuesta aclara que no se controló contra los datos y no
+  sirve de evidencia: usarla después para decidir pasa por el ciclo completo.
+- **Consultas estándar.** Una pregunta repetida ("los datos estándar del pedido 1234") que tiene un
+  script y una fila `reliable` en `queries.md`. Corre el script y no registra nada. **Se estandariza
+  el proceso, nunca la respuesta:** el script lee el dato real en cada corrida. Una consulta gana
+  `reliable` con errores sembrados y corridas comparadas a mano, y lo pierde con una respuesta
+  equivocada, un script cambiado o un dato real cambiado.
+
+El detalle está en `template/CLAUDE.md`, sección 5.1.
+
 ## Costos
 
 - **Carga de trabajo.** El protocolo completo se justifica cuando la wiki respalda números que
   alguien tiene que defender, o cuando la comparten varios que escriben. Para notas personales, la
-  versión liviana de Karpathy probablemente alcanza. Todo esto es modular.
+  versión liviana de Karpathy probablemente alcanza. Todo esto es modular. Dentro de una wiki, lo
+  que no necesita el protocolo va por un camino corto.
 - **Otro énfasis.** Esto hace la wiki más confiable y más segura de cambiar. No mejora la síntesis
   en sí: eso sigue dependiendo del modelo y de tus preguntas.
 
@@ -368,6 +384,7 @@ template/          una carpeta para arrancar: copiala para empezar
   registry.md      solo tablas: D, H, T, P y valores reemplazados
   registry/        una página por ID
   pending.md       lo que falta hacer
+  queries.md       preguntas repetidas que saltean el ciclo, con su script y su estado
   log.md           el registro de firmas
   roles/           redactor, revisor y una plantilla para roles nuevos
   workflows/       una plantilla para guías paso a paso con controles

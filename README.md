@@ -342,11 +342,26 @@ ingest, a question, a page, a decision.
 7. **Register:** the row, its page with the why, `pending.md`, and the log, all in the same move.
 8. **Close:** what's resolved, what's open, who it depends on, and the repeat question (8).
 
+**Short paths.** The cycle pays off when something depends on the result. Two kinds of work skip it,
+and when in doubt, it's the full cycle:
+
+- **Light work.** Nothing depends on it: no decision, no value or status changes, and being wrong
+  costs almost nothing. It reads only what it needs. A question writes nothing, a small fix writes
+  the file and its log line. The answer says it wasn't checked against the data, and it isn't
+  evidence: using it for a decision later goes through the full cycle.
+- **Standard queries.** A repeated question ("the standard data of order 1234") that has a script
+  and a `reliable` row in `queries.md`. It runs the script and registers nothing. **What gets
+  standardized is the process, never the answer:** the script reads the ground truth on every run. A
+  query earns `reliable` with planted errors and runs compared by hand, and loses it with a wrong
+  answer, a changed script or a changed ground truth.
+
+The details are in `template/CLAUDE.md`, section 5.1.
+
 ## Trade-offs
 
 - **Overhead.** The full protocol pays off when the wiki backs numbers someone has to defend, or
   when several writers share it. For personal notes, Karpathy's lighter version is probably enough.
-  Everything here is modular.
+  Everything here is modular. Inside a wiki, what doesn't need the protocol takes a short path.
 - **A different emphasis.** This makes the wiki more trustworthy and easier to change safely. It
   doesn't make the synthesis itself any better: that's still the model and your questions.
 
@@ -359,6 +374,7 @@ template/          a starting folder: copy it to begin
   registry.md      tables only: D, H, T, P and superseded values
   registry/        one page per ID
   pending.md       what's left to do
+  queries.md       repeated questions that can skip the cycle, with their script and status
   log.md           the signature log
   roles/           writer, reviewer, and a template for new roles
   workflows/       a template for step-by-step guides with checks
