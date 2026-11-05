@@ -17,6 +17,7 @@ source (ground truth, never edited) · log (append-only)
 | `pending.md` | state | What's left to do. Short, only what's open. Read first |
 | `registry.md` | state | Only tables: each D, H, T and P with its status, evidence and page, plus superseded values |
 | `registry/` | state | One small page per ID with its why. Open only the ones the work item touches |
+| `queries.md` | state | Repeated questions that can take the short path, with their script and status. No answers |
 | `log.md` | log | Who changed what and when: the chronology. Read only its last lines before writing |
 
 ## Pages

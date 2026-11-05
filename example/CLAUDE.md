@@ -27,13 +27,14 @@
 
 ## 3 · Where the state is
 
-Read these before answering anything.
+Read these before answering anything, except on the short paths of 5.1.
 
 | File | Answers |
 |---|---|
 | `pending.md` | What's left to do. Short, only what's open. Read first, in full |
 | `registry.md` | Only tables: every decision, finding, question and pending decision with its status and evidence, plus the superseded values. Read in full: it stays short |
 | `registry/` | One small page per ID with its *why*: what, why, how, where else this is calculated, validation. Open only the ones the work item touches |
+| `queries.md` | Which repeated questions can take the short path (5.1). Read it when a request looks like one |
 | `wiki/` | The pages. Start from `index.md` |
 | `index.md` | One line per file: its type and what it answers |
 | `log.md` | Who changed what and when: the chronology. Not state: written after every write; before writing, read only its last lines |
@@ -78,7 +79,7 @@ stops being followed, so a new rule is added only with the error that caused it.
 ## 5 · The cycle of a work item
 
 A work item can be a source to ingest, a question, a page, a metric or a decision. I say which
-one when I open it. The cycle is always the same.
+one when I open it. The cycle is always the same, except for the short paths of 5.1.
 
 1. **Scope.** One line: what's in and what's out. If it starts growing, cut it and register the
    rest as a separate item.
@@ -101,6 +102,54 @@ one when I open it. The cycle is always the same.
    **was something done by hand a second time, or did an error repeat?** If yes, propose in one
    line how to avoid it: a rule here (with its origin), a check, a script, a role or a workflow
    (section 8). Nothing is built without my approval.
+
+### 5.1 · Short paths
+
+The full cycle pays off when something depends on the result. When nothing does, it's only cost.
+Two kinds of work skip it. **When in doubt, it's the full cycle.** I can also ask for any of the
+three out loud, and I can always ask for more than you chose.
+
+| | Light work | Standard query | Full cycle |
+|---|---|---|---|
+| **What** | Nothing depends on it: it passes the test below | A repeated question that matches a `reliable` row of `queries.md` exactly | Everything else |
+| **Reads** | Only what it needs | Only that row | Section 3, and what the cycle asks for |
+| **Does** | Answers, or makes the small change | Runs the checks and the script, and answers with its output, naming the row | The eight steps |
+| **Writes** | For a question, nothing. For a small change, the file and its line in `log.md` | Nothing | Everything |
+
+Neither path needs the session start of section 9.
+
+**Light work: the test.** All three must hold:
+
+1. **No decision depends on it,** and it won't be quoted as a fact or reach anyone else.
+2. **It changes no number, status, decision or finding.** Asking where something is or what a page
+   says passes. So does fixing a typo, a broken link or the format.
+3. **Being wrong costs almost nothing:** it's noticed and undone in a minute.
+
+A light answer says what it rests on: "according to the wiki, not checked against the data". It
+isn't evidence: if it's later used for a decision or quoted, that use goes through the full cycle.
+If anything new shows up on the way (a contradiction, an error, a number that doesn't add up), stop
+and switch to the full cycle. A small change keeps its line in the log because section 7 protects
+against two writers, however small the change is.
+
+**Standard queries: what gets standardized is the process, never the answer.** The script reads the
+ground truth on every run. A stored answer is a copy that goes stale (rules 2 and 4).
+
+- **Before answering,** two checks: `wikicheck hash` on the script matches the row, and
+  `wikicheck snapshot` shows no change in what the row reads. If either fails, it's the full cycle.
+- **The script fails loudly:** ID not found, more than one match, unexpected columns. A ground truth
+  outside `raw/` is invisible to the snapshot, so the script's own checks are what catch a change
+  there.
+- **Only reading.** Anything that writes to a system, moves money or sends a message is never a
+  standard query.
+- **From `testing` to `reliable`:** the script passes the tests of 8.2, including the planted errors,
+  and then its last 5 runs were compared by hand against the ground truth with no correction. You
+  propose it with that evidence and I approve it. 5 is a starting point: raise it if one gets through.
+- **Back to `testing`:** a wrong answer, a changed script, a changed ground truth or a failed check
+  in the script. The count starts again.
+- Changing a row is a write: it's signed in the log like any other.
+
+*Origin: a systems team running a similar wiki reported spending too long writing records for
+repetitive lookups that recorded nothing new. Second-hand, not measured here.*
 
 ## 6 · Numbering and statuses
 
@@ -142,6 +191,7 @@ created.
 | Task | Tool | Why |
 |---|---|---|
 | Search, count, compare values between files, check links, check that a number still holds | **Script** (`wikicheck` or a new mode) | Same result every time, full coverage, seconds |
+| Answer a repeated question | **Script**, listed in `queries.md` (5.1) | Reads the ground truth every time, costs almost no tokens, leaves nothing to register |
 | Find every mention of a term, code or value | **Script**, `wikicheck extract` | Finds 100 % of literal mentions, with the paragraph or table row |
 | Verify a report from another agent | **Script**, `wikicheck cite` | Checks every citation, not a sample, and what was left out |
 | Independent review | **Fresh agent**, ideally another model, with `roles/reviewer.md` | Finds what the author doesn't see because it "knows what it meant" |
@@ -264,7 +314,7 @@ Never paste the raw report.
 Run `wikicheck lint` and `wikicheck snapshot` (it diffs the ground truth against the last
 snapshot), read the files of section 3, and tell me what you found that differs from what I
 expected, including which lint candidates turned out to be real. Then I tell you the work item.
-In a project split into areas, what to read is in section 12.
+In a project split into areas, what to read is in section 12. The short paths of 5.1 skip this.
 
 ## 10 · How you deliver
 
@@ -281,6 +331,7 @@ In a project split into areas, what to read is in section 12.
 | `index.md` | Table rows with three cells: the path in backticks, its type, and what it answers. A path ending in `/` covers a whole folder. Types: state, page, method, block, reference, source, log. Any folder may have its own `index.md` listing its own files, with paths relative to it; the index above lists that folder |
 | `registry.md` | Tables with `ID`, `Status`, `Evidence` and `Page` columns, and an optional `Area` column (an area folder name, `all` or `shared`). An "executed" row needs evidence. Closed rows can move to `registry-archive.md`, same format, closed statuses only. Superseded values go in a table with `Old value` and `New value` columns; to mention an old value on purpose elsewhere, mark the line `(old)` |
 | `registry/` | One page per ID, named after it (`registry/<ID>.md`), linked from its row as `[[<ID>]]`. Every page needs its row. The status is not repeated in the page |
+| `queries.md` | One table: `Query`, `How it's asked`, `Script`, `Script hash` (what `wikicheck hash` prints), `Reads`, `Status` (`testing` or `reliable`), `Evidence` |
 | `log.md` | A table whose first column is `When` (`YYYY-MM-DD HH:MM`, read from the clock) and whose fifth says what was checked. Once rotated, one file per month in `log/` (`log/YYYY-MM.md`), each with only its month |
 | Pages | Links as `[[page]]` or `[[page#Heading]]` (in a table, escape the alias bar: `[[page#Heading\|text]]`). A page derived from a source declares it in frontmatter: `sources:` then `- raw/file.csv sha256:<first 12 hex>` (`wikicheck hash` prints it) |
 | This file | Every item of the Rules section carries `Origin:` |
