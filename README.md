@@ -95,7 +95,7 @@ before reporting it.
 |---|---|
 | L1 Index | Files nobody listed, entries pointing to deleted files, entries without a type, in the root index and in every area's index |
 | L2 Links | `[[page]]` and `[[page#heading]]` that point nowhere |
-| L3 Registry | IDs used but never registered, duplicates, "executed" without evidence, cancelled decisions still in use, open items in the archive, unknown areas |
+| L3 Registry | IDs used but never registered, duplicates, "executed" without evidence, cancelled decisions still in use (except in the log, which is history and is never edited), open items in the archive, unknown areas |
 | L4 Superseded values | An old value that a correction already replaced, still sitting in some page |
 | L5 Provenance | Pages derived from a source that changed after they were written |
 | L6 Log | Signatures out of order, in the future (estimated, not read from a clock), in the wrong month's file, or that don't say what was checked |

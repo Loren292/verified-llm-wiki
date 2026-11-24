@@ -28,7 +28,9 @@ Lint checks:
     L3 registry    IDs (D, H, T, P) are registered once, statuses are valid,
                    "executed" has evidence, no unknown or cancelled IDs in use,
                    every page in registry/ has its row, only closed items in
-                   registry-archive.md, and every Area value is a folder in areas/
+                   registry-archive.md, and every Area value is a folder in areas/.
+                   A cancelled ID in the log is history, not a use (log lines are
+                   never edited); an unregistered ID there is still flagged
     L4 superseded  values in an "Old value" column don't appear anywhere else
     L5 provenance  sources hashed in a page's frontmatter haven't changed
     L6 log         log.md and log/YYYY-MM.md: clock times, in order, in their month,
@@ -357,6 +359,9 @@ def check_registry(root: Path, **_):
         for p in sorted(pages.glob("*.md")):
             if p.stem not in ids:
                 out.append((tag, rel(root, p), f"page for {p.stem}, which has no row in registry.md"))
+    # The log is history: a past line named the ID while it was current, and log lines are never
+    # edited, so a cancelled ID there would be flagged forever. Unregistered IDs are still checked.
+    logs = {rel(root, p) for p in log_files(root)}
     for p in md_files(root):
         r = rel(root, p)
         for n, line in numbered(read(p)):
@@ -364,7 +369,7 @@ def check_registry(root: Path, **_):
                 code = m.group(0)
                 if code not in ids:
                     out.append((tag, f"{r}:{n}", f"{code} is used but not registered"))
-                elif (ids[code][0] == "cancelled" and r not in REGISTRY_FILES
+                elif (ids[code][0] == "cancelled" and r not in REGISTRY_FILES and r not in logs
                       and "cancel" not in line.lower()):
                     out.append((tag, f"{r}:{n}", f"{code} is cancelled but used as if it were current"))
     return out
