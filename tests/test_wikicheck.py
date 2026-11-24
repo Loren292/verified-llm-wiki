@@ -116,6 +116,40 @@ class TestL3Registry(ExampleWiki):
         self.assertTrue(any("registry/H7.md" == f[1] for f in self.lint("L3")))
 
 
+class TestL3CancelledInLog(ExampleWiki):
+    """A cancelled ID in a log line is history, not a current use; anywhere else it is still
+    flagged. example/log.md names D2 ("D2 registered as decided")."""
+
+    def setUp(self):
+        super().setUp()
+        self.replace("registry.md", "| D2 | Revenue and AOV are also shown by week | decided |",
+                     "| D2 | Revenue and AOV are also shown by week | cancelled |")
+        self.assertIn("D2", (self.root / "log.md").read_text(encoding="utf-8"))
+
+    def cancelled(self, path):
+        return [f for f in self.lint("L3") if f[1].startswith(path + ":")
+                and "D2 is cancelled but used as if it were current" in f[2]]
+
+    def test_cancelled_id_in_log_is_not_flagged(self):
+        self.assertEqual(self.cancelled("log.md"), [])
+        self.assertTrue(self.cancelled("pending.md"))  # still flagged outside the log
+
+    def test_planted_cancelled_id_in_a_page_is_still_flagged(self):
+        self.append("wiki/metrics.md", "\nRevenue is also shown by week, per D2.\n")
+        self.assertEqual(len(self.cancelled("wiki/metrics.md")), 1)
+
+    def test_planted_page_named_like_a_log_outside_the_log_is_still_flagged(self):
+        (self.root / "wiki" / "log").mkdir()
+        (self.root / "wiki" / "log" / "2026-10.md").write_text("Per D2.\n", encoding="utf-8")
+        self.assertEqual(len(self.cancelled("wiki/log/2026-10.md")), 1)
+
+    def test_planted_unregistered_id_in_log_is_still_flagged(self):
+        self.append("log.md", "| 2026-10-28 14:30 | me | x | Wrote D9 | lint |\n")
+        found = [f for f in self.lint("L3") if f[1].startswith("log.md:")]
+        self.assertEqual(len(found), 1)
+        self.assertIn("D9 is used but not registered", found[0][2])
+
+
 class TestL4Superseded(ExampleWiki):
     def test_old_value_reappears(self):
         self.append("wiki/orders-table.md", "\nAverage order: $43.04.\n")
@@ -309,6 +343,14 @@ class TestScale(LargeWiki):
             "# Log · 2026-09\n\n| When | Who | Files | What | Checked |\n|---|---|---|---|---|\n"
             "| 2026-09-30 18:00 | me | x | y | z |\n", encoding="utf-8")
         self.assertEqual(self.lint("L6"), [])
+
+    def test_cancelled_id_in_monthly_log_is_not_flagged(self):
+        self.replace("registry.md", "| D2 | Revenue and AOV are also shown by week | decided |",
+                     "| D2 | Revenue and AOV are also shown by week | cancelled |")
+        self.assertIn("D2", (self.root / "log" / "2026-10.md").read_text(encoding="utf-8"))
+        found = [f for f in self.lint("L3") if "D2 is cancelled" in f[2]]
+        self.assertFalse([f for f in found if f[1].startswith("log/")])
+        self.assertTrue([f for f in found if f[1].startswith("pending.md:")])
 
     def test_rotated_log_badly_named(self):
         (self.root / "log" / "october.md").write_text("# Log\n", encoding="utf-8")

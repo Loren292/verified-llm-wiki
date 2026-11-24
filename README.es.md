@@ -97,7 +97,7 @@ veredictos**: el agente lee cada uno antes de reportarlo.
 |---|---|
 | L1 Índice | Archivos que nadie anotó, entradas que apuntan a archivos borrados, entradas sin tipo, en el índice raíz y en el de cada área |
 | L2 Links | `[[página]]` y `[[página#título]]` que no apuntan a nada |
-| L3 Registro | IDs usados y nunca registrados, duplicados, "ejecutado" sin evidencia, decisiones anuladas que se siguen usando, ítems abiertos en el archivo, áreas que no existen |
+| L3 Registro | IDs usados y nunca registrados, duplicados, "ejecutado" sin evidencia, decisiones anuladas que se siguen usando (salvo en el log, que es historia y no se edita), ítems abiertos en el archivo, áreas que no existen |
 | L4 Valores reemplazados | Un valor viejo que una corrección ya reemplazó y sigue en alguna página |
 | L5 Procedencia | Páginas que salieron de una fuente que cambió después de escribirlas |
 | L6 Log | Firmas fuera de orden, en el futuro (estimadas, no leídas del reloj), en el archivo de otro mes, o que no dicen qué se controló |
